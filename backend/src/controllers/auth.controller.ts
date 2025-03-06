@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
-import { PermType } from '../schemas/user.schema'
+import {PermType, User} from '../schemas/user.schema'
 import * as user_service from '../services/user.service'
 import * as auth_service from '../services/auth.service'
 import * as newstudentservice from '../services/newstudent.service'
@@ -10,6 +10,7 @@ import { jwtSecret, service_url } from '../utils/secret'
 import { decodeToken } from '../utils/token'
 import { getToken, getUserData } from '../utils/api_etu'
 import { validateCASTicket } from '../services/auth.service'
+import {Blacklist, GetAllBlacklistedStudent} from "../services/blacklist.service";
 
 export const register = async (req: Request, res: Response, next: NextFunction) => {
     
@@ -45,7 +46,7 @@ export const newStudentLogin = async (req: Request, res: Response, next: NextFun
     const { email, password } = req.body
 
     try {
-        const user = await user_service.getUserByEmail(email.toLowerCase())
+        const user: User = await user_service.getUserByEmail(email.toLowerCase())
         if (!user) {
             return Error(res, { msg: "User doesn't exists" })
         }
@@ -56,7 +57,7 @@ export const newStudentLogin = async (req: Request, res: Response, next: NextFun
         }
         const id = user.id
         const token = sign({ id, email }, jwtSecret, { expiresIn: '1h' })
-        user_service.incrementConnection(id);
+        user_service.incrementConnection(id as number);
         Ok(res, { data: token })
     } catch (error) {
         Error(res, { error })
@@ -120,6 +121,7 @@ export const isTokenValid = async (req: Request, res: Response) => {
             return Unauthorized(res, { msg: 'Unauthorized: Missing or malformed token', data: { isValid: false } });
         }
 
+
         const token = authHeader.split(' ')[1];
 
         // Decode the token and validate it
@@ -131,6 +133,11 @@ export const isTokenValid = async (req: Request, res: Response) => {
         // Check for email presence in the decoded token
         if (!decodedToken.email) {
             return Unauthorized(res, { msg: 'Unauthorized: Invalid token content', data: { isValid: false } });
+        }
+        //get emails blacklist
+        const blacklisted = await GetAllBlacklistedStudent()
+        if(blacklisted.map(elem => elem.email).includes(decodedToken.email)) {
+            return Unauthorized(res, { msg: 'Unauthorized: Invalid account ', data: { isValid: false } });
         }
 
         // If everything is fine, return a positive response
